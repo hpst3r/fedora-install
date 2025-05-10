@@ -28,8 +28,7 @@ rpm_packages=(
     rsms-inter-fonts # the inter sans-serif font family
     wine # the Wine Windows compatibility layer
     hugo # the Hugo static site generator
-    intel-media-driver # intel media decode driver from rpmfusion
-    libva-nvidia-driver # nvidia media decode driver from rpmfusion
+    neovim # the neovim text editor
 )
 
 # dnf groups to be group installed
@@ -41,14 +40,47 @@ dnf_groups=(
 # enable rpmfusion?
 enable_rpmfusion=1
 
-# install Nvidia driver? Depends on RPMFusion
-install_nvidia_driver=1
+# automatically detect graphics hardware (to install appropriate drivers) via lspci?
+# overrides below will trigger relevant section regardless of this setting
+autodetect_graphics_hardware=1
+
+# install Nvidia driver and media codecs? Depends on RPMFusion
+install_nvidia_driver=0
+
+# array of packages to install when Nvidia graphics are detected or Nvidia flag set
+# akmod will build the kernel module
+# verify it's completed with modinfo -F version nvidia 
+# see:
+# https://rpmfusion.org/Howto/NVIDIA#Current_GeForce.2FQuadro.2FTesla
+# https://rpmfusion.org/Howto/Optimus
+# https://www.reddit.com/r/Fedora/comments/18bj1kt/fedora_nvidia_secure_boot/
+nvidia_rpm_packages=(
+    gcc # dependency
+    kernel-headers # dependency
+    kernel-devel # dependency
+    akmod-nvidia
+    xorg-x11-drv-nvidia # driver
+    xorg-x11-drv-nvidia-libs # dependency
+    xorg-x11-drv-nvidia-libs.i686 # dependency
+    libva-nvidia-driver # media accel
+)
+
+# install Intel media codecs?
+install_intel_driver=0
+
+# array of packages to install when Intel graphics are detected or Intel flag set
+intel_rpm_packages=(
+    intel-media-driver
+)
 
 # install 1password?
 install_1password=1
 
 # install vscode from repository?
 install_vscode_rpm=1
+
+# set window titlebar button settings?
+set_button_layout=1
 
 # set fonts?
 set_system_fonts=1
@@ -62,6 +94,9 @@ swap_ffmpeg=1
 
 # call grubby to disable the pretty splash screen?
 disable_quiet_boot=1
+
+# disable mouse acceleration?
+disable_mouse_accel=1
 
 echo "beginning setup.sh."
 
@@ -80,16 +115,23 @@ if [[ "$enable_rpmfusion" ]]; then
     sudo dnf install -y \
       https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
 
+    echo "Enabled rpmfusion 'free' repo."
+
     # enable the rpmfusion 'nonfree' repo
     sudo dnf install -y \
       https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+    
+    echo "Enabled rpmfusion 'nonfree' repo."
 
 fi
 
+echo
+
 # install 1Password, my preferred password manager
+# todo: do only if needed
 if [[ "$install_1password" ]]; then
 
-    echo "adding 1password repo..."
+    echo "Adding 1Password repo..."
     
     # add key for the yum repo
     sudo rpm --import https://downloads.1password.com/linux/keys/1password.asc
@@ -98,31 +140,35 @@ if [[ "$install_1password" ]]; then
     sudo echo -e "[1password]\nname=1Password Stable Channel\nbaseurl=https://downloads.1password.com/linux/rpm/stable/\$basearch\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=1\ngpgkey=\"https://downloads.1password.com/linux/keys/1password.asc\"" \
     | sudo tee /etc/yum.repos.d/1password.repo
     
-    echo "installing 1password..."
+    echo "Installing 1Password RPM..."
 
     # install 1PW
     sudo dnf install -y 1password
     
-    echo "done installing 1pass."
+    echo "Done installing 1Password."
 
 fi
+
+echo
 
 # install VSCode
 if [[ "$install_vscode_rpm" ]]; then
 
-    echo "adding vscode repo..."
+    echo "Adding VSCode repo..."
 
     sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
     echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\nautorefresh=1\ntype=rpm-md\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" | sudo tee /etc/yum.repos.d/vscode.repo > /dev/null
     
-    echo "installing vscode..."
+    echo "Installing VSCode..."
 
     dnf check-update
     sudo dnf install code # or code-insiders
     
-    echo "done installing vscode."
+    echo "Done installing VSCode."
 
 fi
+
+echo
 
 # install flatpaks
 if [[ "$install_flatpaks" ]]; then
@@ -143,12 +189,20 @@ if [[ "$install_flatpaks" ]]; then
         
     done
     
-    echo "flatpaks ${apps_to_install[@]} need to be installed. Working..."
+    if [[ "${apps_to_install[@]}" ]]; then
 
-    # install missing flatpaks
-    flatpak install -y "${apps_to_install[@]}"
+        echo "flatpaks ${apps_to_install[@]} need to be installed. Working..."
+
+        # install missing flatpaks
+        flatpak install -y "${apps_to_install[@]}"
     
-    echo "done installing flatpaks."
+        echo "Done installing Flatpaks."
+
+    else
+        
+        echo "No Flatpaks are pending installation. No changes were made."
+
+    fi
 
 fi
 
@@ -161,17 +215,17 @@ fi
 
 if [[ "$install_nvidia_driver" ]]; then
 
-    sudo dnf install gcc kernel-headers kernel-devel akmod-nvidia xorg-x11-drv-nvidia xorg-x11-drv-nvidia-libs xorg-x11-drv-nvidia-libs.i686
-    # akmod will build the kernel module
-    # verify it's completed with modinfo -F version nvidia 
-    # see:
-    # https://rpmfusion.org/Howto/NVIDIA#Current_GeForce.2FQuadro.2FTesla
-    # https://rpmfusion.org/Howto/Optimus
-    # https://www.reddit.com/r/Fedora/comments/18bj1kt/fedora_nvidia_secure_boot/
-    
+    sudo dnf install -y "${nvidia_driver_packages[@]}"    
+
 fi
 
-# swap ffmpeg for ffmpeg-free
+if [[ "$install_intel_driver" ]]; then
+
+    sudo dnf install -y "${intel_driver_packages[@]}"
+
+fi
+
+# swap ffmpeg-free for full-fat ffmpeg
 if [[ "$swap_ffmpeg" ]]; then
 
     sudo dnf swap ffmpeg-free ffmpeg --allowerasing -y
@@ -186,13 +240,41 @@ if [[ "$set_system_fonts" ]]; then
     echo "Setting system fonts..."
     
     for key in font-name document-font-name; do
+	
+	echo "Setting o.g.d.i key ${key} to font ${interface_font}"
+
         gsettings set org.gnome.desktop.interface \
             "$key" "$interface_font"
+
+	echo "o.g.d.i key ${key} is now:"
+	gsettings get org.gnome.desktop.interface "$key"	
+
     done;
+
+    echo "Setting o.g.d.i key monospace-font-name to font ${monospace_font}"
     
     gsettings set org.gnome.desktop.interface \
         monospace-font-name "$monospace_font"
+
+    echo "o.g.d.i key monospace-font-name is now set to:"
     
+    gsettings get org.gnome.desktop.interface monospace-font-name
+    
+    echo "Done modifying system fonts."
+ 
+fi
+
+if [[ "$disable_mouse_accel" ]]; then
+
+    echo "Setting mouse acceleration profile to 'flat'..."
+    
+    gsettings set org.gnome.desktop.peripherals.mouse \
+        accel-profile 'flat'
+
+    echo "Set mouse acceleration profile to:"
+
+    gsettings get org.gnome.desktop.peripherals.mouse accel-profile
+        
 fi
 
 # use the gsettings utility to set Gnome registry key for window control buttons
@@ -203,6 +285,10 @@ if [[ "$set_button_layout" ]]; then
     gsettings set org.gnome.desktop.wm.preferences \
         button-layout "appmenu:minimize,maximize,close"
     
+    echo "Set GNOME window titlebar button layout to:"
+
+    gsettings get org.gnome.desktop.wm.preferences button-layout
+    
 fi
 
 if [[ "$disable_quiet_boot" ]]; then
@@ -210,6 +296,10 @@ if [[ "$disable_quiet_boot" ]]; then
     echo "Disabling quiet boot..."
     
     sudo grubby --update-kernel=ALL --remove-args='quiet'
+
+    echo "New kernel args:"
+
+    sudo grubby --info=ALL | grep -oP 'args="\K[^"]+' 
     
 fi
 
