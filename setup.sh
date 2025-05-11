@@ -1,10 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # configure a Fedora machine w/ the GNOME desktop to my preferences.
 
 # log stdout, stderr to file
 log_to_file=1
 log_file="setup.sh.log"
+
+# hostnames by S/N
+set_hostname=1
+
+declare -A serial_numbers
+serial_numbers["PF3873HS"]="t14g2a" # my T14 Gen 2 R7 5850u
 
 # flatpak app IDs to be installed
 install_flatpaks=1
@@ -89,6 +95,10 @@ interface_font='Inter 11'
 document_font="$interface_font"
 monospace_font='JetBrains Mono 11'
 
+# change font antialiasing from default (greyscale)
+# to rgba (subpixel)? Subpixel looks better on RGB LCDs
+set_font_antialiasing=1
+
 # swap ffmpeg-free for full-fat ffmpeg?
 swap_ffmpeg=1
 
@@ -98,18 +108,90 @@ disable_quiet_boot=1
 # disable mouse acceleration?
 disable_mouse_accel=1
 
-echo "beginning setup.sh."
+# wrapper to set key and print new state to console
+set_gsettings_key() {
 
-if [[ "$log_to_file" ]]; then
-    echo "this script's output will be logged to $log_file."
+    local path=$1
+    local key=$2
+    local new_value=$3
+
+    local path_abbreviation=$(echo "$path" | sed -E 's/\b([a-z])[a-z]*\.?/\1./g' | sed -E 's/\.$//')
+
+    local current_value=$(gsettings get "$path" "$key" | sed "s/'//g")
+
+    if [[ "$current_value" != "$new_value" ]]; then
+
+        echo -e "\e[93mExisting ${path_abbreviation} property '${key}' is '${current_value}'"
+        echo -e "Not requested value '${new_value}'.\e[0m"
+
+        echo "Setting ${path_abbreviation} property '${key}' to '${new_value}'"
+
+        gsettings set "$path" \
+            "$key" "$new_value"
+
+        echo "${path_abbreviation} property '${key}' is now:"
+
+        gsettings get "$path" "$key"
+
+    else
+
+        echo "Existing ${path_abbreviation} property '${key}' is '${current_value}'."
+
+        echo -e "\e[32m${key} matches requested '${new_value}'. No changes will be made.\e[0m"
+
+    fi
+
+}
+
+echo "Beginning setup.sh."
+
+if [[ "$log_to_file" -eq 1 ]]; then
+
+    echo "This script's output will be written to ${log_file}."
+
     exec > >(tee -a "$log_file") 2>&1
+
+    echo
+
+fi
+
+if [[ "$set_hostname" -eq 1 ]]; then
+
+    echo "Setting system hostname."
+
+    existing_hostname=$(hostname)
+
+    system_serial=$(sudo dmidecode -s chassis-serial-number)
+
+    hostname=${serial_numbers["$system_serial"]}
+
+    if [[ "$existing_hostname" = "$hostname" ]]; then
+
+        echo -e "\e[32mHostname ${existing_hostname} is already set. No changes were made.\e[0m"
+
+    elif [[ ! "$hostname" ]]; then
+
+        echo -e "\e[91mDesired hostname not found in hashtable by S/N ${system_serial}. No changes will be made.\e[0m"
+
+    else
+
+        echo -e "\e[93mSetting system hostname to desired '${hostname}'.\e[0m"
+
+        sudo hostnamectl set-hostname "$hostname"
+
+        echo "System hostname set to: $(hostname)"
+
+    fi
+
+    echo
+
 fi
 
 # enable rpmfusion repositories
 # https://docs.fedoraproject.org/en-US/quick-docs/rpmfusion-setup/
-if [[ "$enable_rpmfusion" ]]; then
+if [[ "$enable_rpmfusion" -eq 1 ]]; then
 
-    echo "enabling rpmfusion free & nonfree repos..."
+    echo "Enabling rpmfusion free and nonfree repos..."
 
     # enable the rpmfusion 'free' repo
     sudo dnf install -y \
@@ -123,13 +205,13 @@ if [[ "$enable_rpmfusion" ]]; then
     
     echo "Enabled rpmfusion 'nonfree' repo."
 
-fi
+    echo
 
-echo
+fi
 
 # install 1Password, my preferred password manager
 # todo: do only if needed
-if [[ "$install_1password" ]]; then
+if [[ "$install_1password" -eq 1 ]]; then
 
     echo "Adding 1Password repo..."
     
@@ -146,13 +228,13 @@ if [[ "$install_1password" ]]; then
     sudo dnf install -y 1password
     
     echo "Done installing 1Password."
+    
+    echo
 
 fi
 
-echo
-
 # install VSCode
-if [[ "$install_vscode_rpm" ]]; then
+if [[ "$install_vscode_rpm" -eq 1 ]]; then
 
     echo "Adding VSCode repo..."
 
@@ -166,12 +248,12 @@ if [[ "$install_vscode_rpm" ]]; then
     
     echo "Done installing VSCode."
 
+    echo
+
 fi
 
-echo
-
 # install flatpaks
-if [[ "$install_flatpaks" ]]; then
+if [[ "$install_flatpaks" -eq 1 ]]; then
 
     echo "beginning to install flatpaks ${flatpak_apps[@]}"
     # determine what is already installed - just for fun
@@ -191,122 +273,196 @@ if [[ "$install_flatpaks" ]]; then
     
     if [[ "${apps_to_install[@]}" ]]; then
 
-        echo "flatpaks ${apps_to_install[@]} need to be installed. Working..."
+        echo -e "\e[93mflatpak(s) ${apps_to_install[@]} need to be installed. Working...\e[0m"
 
         # install missing flatpaks
         flatpak install -y "${apps_to_install[@]}"
     
-        echo "Done installing Flatpaks."
+        echo "Done installing flatpaks."
 
     else
         
-        echo "No Flatpaks are pending installation. No changes were made."
+        echo -e "\e[32mNo flatpaks are pending installation.\e[0m No changes were made."
 
     fi
+
+    echo
 
 fi
 
 # install individual RPMs with dnf - just let dnf handle stuff that's already here
-if [[ "$install_rpm_packages" ]]; then
+if [[ "$install_rpm_packages" -eq 1 ]]; then
 
     sudo dnf install -y "${rpm_packages[@]}"
+
+    echo
     
 fi
 
-if [[ "$install_nvidia_driver" ]]; then
+if [[ "$autodetect_graphics_hardware" -eq 1 ]]; then
 
-    sudo dnf install -y "${nvidia_driver_packages[@]}"    
+    graphics=$(lspci | grep -i vga)
+
+    case "$graphics" in
+        *NVIDIA*)
+            echo "\e[32mDetected Nvidia graphics\e[0m devices in this system."
+            install_nvidia_driver=1
+            ;;
+        *AMD*   )
+            echo -e "\e[31mDetected AMD graphics\e[0m devices in this system."
+            install_amd_driver=1
+            ;;
+        *Intel* )
+            echo -e "\e[34mDetected Intel graphics\e[0m devices in this system."
+            install_intel_driver=1
+            ;;
+        *)
+            echo -e "\e[35mUnhandled graphics hardware detected\e[0m - no changes will be made."
+            ;;
+    esac
+
+    echo
 
 fi
 
-if [[ "$install_intel_driver" ]]; then
+if [[ "$install_nvidia_driver" -eq 1 ]]; then
+
+    echo "Installing Nvidia driver & media codec packages..."
+
+    sudo dnf install -y "${nvidia_driver_packages[@]}"
+
+    echo   
+
+fi
+
+if [[ "$install_intel_driver" -eq 1 ]]; then
+
+    echo "Installing Intel driver & media codec packages..."
 
     sudo dnf install -y "${intel_driver_packages[@]}"
+
+    echo
 
 fi
 
 # swap ffmpeg-free for full-fat ffmpeg
-if [[ "$swap_ffmpeg" ]]; then
+if [[ "$swap_ffmpeg" -eq 1 ]]; then
+
+    echo "Replacing ffmpeg-free package with normal ffmpeg..."
 
     sudo dnf swap ffmpeg-free ffmpeg --allowerasing -y
     
     sudo dnf update @multimedia --setopt="install_weak_deps=False" --exclude=PackageKit-gstreamer-plugin -y
+
+    echo "Done replacing ffmpeg."
+
+    echo
     
 fi
 
 # use the gsettings utility to set Gnome registry keys for my preferred interface fonts
-if [[ "$set_system_fonts" ]]; then
+if [[ "$set_system_fonts" -eq 1 ]]; then
 
     echo "Setting system fonts..."
     
+    # wrapper for set_gsettings_key with constant path
+    set_font() {
+
+        local key=$1
+        local value=$2
+
+        set_gsettings_key "org.gnome.desktop.interface" "$1" "$2"
+
+    }
+
     for key in font-name document-font-name; do
-	
-	echo "Setting o.g.d.i key ${key} to font ${interface_font}"
 
-        gsettings set org.gnome.desktop.interface \
-            "$key" "$interface_font"
-
-	echo "o.g.d.i key ${key} is now:"
-	gsettings get org.gnome.desktop.interface "$key"	
+        set_font "$key" "$interface_font"
 
     done;
 
-    echo "Setting o.g.d.i key monospace-font-name to font ${monospace_font}"
-    
-    gsettings set org.gnome.desktop.interface \
-        monospace-font-name "$monospace_font"
-
-    echo "o.g.d.i key monospace-font-name is now set to:"
-    
-    gsettings get org.gnome.desktop.interface monospace-font-name
+    set_font monospace-font-name "$monospace_font"
     
     echo "Done modifying system fonts."
+
+    echo
  
 fi
 
-if [[ "$disable_mouse_accel" ]]; then
+if [[ "$disable_mouse_accel" -eq 1 ]]; then
 
     echo "Setting mouse acceleration profile to 'flat'..."
+
+    set_gsettings_key \
+        "org.gnome.desktop.peripherals.mouse" \
+        "accel-profile" \
+        "flat"
     
-    gsettings set org.gnome.desktop.peripherals.mouse \
-        accel-profile 'flat'
+    echo
 
-    echo "Set mouse acceleration profile to:"
-
-    gsettings get org.gnome.desktop.peripherals.mouse accel-profile
-        
 fi
 
 # use the gsettings utility to set Gnome registry key for window control buttons
-if [[ "$set_button_layout" ]]; then
+if [[ "$set_button_layout" -eq 1 ]]; then
 
-    echo "Setting GNOME window titlebar buttons..."
+    echo "Setting GNOME window titlebar button layout..."
 
-    gsettings set org.gnome.desktop.wm.preferences \
-        button-layout "appmenu:minimize,maximize,close"
-    
-    echo "Set GNOME window titlebar button layout to:"
+    set_gsettings_key \
+        "org.gnome.desktop.wm.preferences" \
+        "button-layout" \
+        "appmenu:minimize,maximize,close"
 
-    gsettings get org.gnome.desktop.wm.preferences button-layout
+    echo
     
 fi
 
-if [[ "$disable_quiet_boot" ]]; then
-    
-    echo "Disabling quiet boot..."
-    
-    sudo grubby --update-kernel=ALL --remove-args='quiet'
+if [[ "$set_font_antialiasing" -eq 1 ]]; then
 
-    echo "New kernel args:"
+    echo "Enabling subpixel antialiasing..."
 
-    sudo grubby --info=ALL | grep -oP 'args="\K[^"]+' 
+    set_gsettings_key \
+        "org.gnome.desktop.interface" \
+        "font-antialiasing" \
+        "rgba"
+
+    echo
+
+fi
+
+if [[ "$disable_quiet_boot" -eq 1 ]]; then
     
+    quiet_boot_args_set=$(sudo grubby --info=ALL | grep -i quiet)
+
+    if [[ "$quiet_boot_args_set" -eq 1 ]]; then
+    
+        echo -e "\e[93mQuiet boot is set. Disabling quiet boot...\e[0m"
+
+        echo "Existing kernel args:"
+
+        sudo grubby --info=ALL | grep -oP 'args="\K[^"]+'
+
+        sudo grubby --update-kernel=ALL --remove-args='quiet'
+
+        echo "New kernel args:"
+
+        sudo grubby --info=ALL | grep -oP 'args="\K[^"]+'
+
+    else
+
+        echo -e "\e[32mQuiet boot is already disabled - no action required.\e[0m Kernel args are:"
+
+        sudo grubby --info=ALL | grep -oP 'args="\K[^"]+'
+
+    fi
+
+    echo
+   
 fi
 
 # disable systemd-resolved
 # https://wporter.org/disabling-systemd-resolved-and-letting-networkmanager-control-/etc/resolv.conf-on-fedora-40/
 
-if [[ "$disable_resolved" ]]; then
+if [[ "$disable_resolved" -eq 1 ]]; then
 
     echo "Disabling systemd-resolved..."
         
@@ -332,17 +488,21 @@ if [[ "$disable_resolved" ]]; then
     sudo systemctl restart NetworkManager
     
     echo "Done! Resolved has been disabled."
+
+    echo
     
 fi
 
 # TODO stop this from trying to install when already installed
-if [[ "$install_dnf_groups" ]]; then
+if [[ "$install_dnf_groups" -eq 1 ]]; then
 
     for group in "${dnf_groups[@]}"; do
 
         echo "Installing dnf group $group..."
         
         sudo dnf group install "$group" -y
+
+        echo
         
     done
 
