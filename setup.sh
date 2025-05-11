@@ -10,7 +10,19 @@ log_file="setup.sh.log"
 set_hostname=1
 
 declare -A serial_numbers
-serial_numbers["PF3873HS"]="t14g2a" # my T14 Gen 2 R7 5850u
+
+serial_numbers["PF570W6B"]="wp14sg5i" # P14s Gen 5 U7 155H A500
+serial_numbers["PW00LM1M"]="wp1g4i" # P1 Gen 4 i7-11800H A2000
+serial_numbers["PF3873HS"]="wt14g2a" # T14 Gen 2 R7 5850U
+serial_numbers["PC1X701X"]="wt14sg1a" # T14s Gen 1 R7 4750U
+serial_numbers["PC0Y9G25"]="wt480s" # good old T480s i5-8350U
+
+serial_numbers["MJ09DZNB"]="m920q0" # m920q #1 i5-8600T
+serial_numbers["MJ09DZR1"]="m920q1" # m920q #2 i5-8600T
+serial_numbers["MJ08LQZS"]="m715q0" # m715q R5 2400GE
+serial_numbers["MJ00KMJZ"]="e320" # e32 #1 i7-4790
+serial_numbers["MXL9293DBY"]="800g4m0" # elitedesk 800g4 mini i5-8500
+serial_numbers["79T6YN2"]="3060t0" # optiplex 3060 tower i5-8500
 
 # flatpak app IDs to be installed
 install_flatpaks=1
