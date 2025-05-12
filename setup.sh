@@ -179,7 +179,7 @@ if [[ "$set_hostname" -eq 1 ]]; then
 
     if [[ "$existing_hostname" = "$hostname" ]]; then
 
-        echo -e "\e[32mHostname ${existing_hostname} is already set. No changes were made.\e[0m"
+        echo -e "\e[32mDesired hostname ${existing_hostname} is already set. No changes were made.\e[0m"
 
     elif [[ ! "$hostname" ]]; then
 
@@ -187,7 +187,7 @@ if [[ "$set_hostname" -eq 1 ]]; then
 
     else
 
-        echo -e "\e[93mSetting system hostname to desired '${hostname}'.\e[0m"
+        echo -e "\e[93mChanging system hostname from '${existing_hostname}' to desired '${hostname}'.\e[0m"
 
         sudo hostnamectl set-hostname "$hostname"
 
@@ -256,7 +256,7 @@ if [[ "$install_vscode_rpm" -eq 1 ]]; then
     echo "Installing VSCode..."
 
     dnf check-update
-    sudo dnf install code # or code-insiders
+    sudo dnf install -y code # or code-insiders
     
     echo "Done installing VSCode."
 
@@ -445,7 +445,9 @@ if [[ "$disable_quiet_boot" -eq 1 ]]; then
     
     quiet_boot_args_set=$(sudo grubby --info=ALL | grep -i quiet)
 
-    if [[ "$quiet_boot_args_set" -eq 1 ]]; then
+    rhgb_boot_args_set=$(sudo grubby --info=ALL | grep -i rhgb)
+
+    if [[ "$quiet_boot_args_set" != '' ]]; then
     
         echo -e "\e[93mQuiet boot is set. Disabling quiet boot...\e[0m"
 
@@ -459,9 +461,35 @@ if [[ "$disable_quiet_boot" -eq 1 ]]; then
 
         sudo grubby --info=ALL | grep -oP 'args="\K[^"]+'
 
+        echo "\e[32mDone disabling quiet boot.\e[0m"
+
     else
 
         echo -e "\e[32mQuiet boot is already disabled - no action required.\e[0m Kernel args are:"
+
+        sudo grubby --info=ALL | grep -oP 'args="\K[^"]+'
+
+    fi
+
+    if [[ "$rhgb_boot_args_set" != '' ]]; then
+
+        echo -e "\e[93mRHGB is set. Disabling RHGB...\e[0m"
+
+        echo "Existing kernel args:"
+
+        sudo grubby --info=ALL | grep -oP 'args="\K[^"]+'
+
+        sudo grubby --update-kernel=ALL --remove-args='rhgb'
+
+        echo "New kernel args:"
+
+        sudo grubby --info=ALL | grep -oP 'args="\K[^"]+'
+
+        echo "\e[32mDone disabling RHGB.\e[0m"
+
+    else
+
+        echo -e "\e[32mRHGB is already disabled - no action required.\e[0m Kernel args are:"
 
         sudo grubby --info=ALL | grep -oP 'args="\K[^"]+'
 
