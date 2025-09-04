@@ -108,8 +108,9 @@ document_font="$interface_font"
 monospace_font='JetBrains Mono 11'
 
 # change font antialiasing from default (greyscale)
-# to rgba (subpixel)? Subpixel looks better on RGB LCDs
-set_font_antialiasing=1
+# to rgba (subpixel)? Subpixel looks better on some rgb subpixel LCDs
+# enforce greyscale if 0.
+set_font_antialiasing_rgba=0
 
 # swap ffmpeg-free for full-fat ffmpeg?
 swap_ffmpeg=1
@@ -428,7 +429,22 @@ if [[ "$set_button_layout" -eq 1 ]]; then
     
 fi
 
-if [[ "$set_font_antialiasing" -eq 1 ]]; then
+# if rgba font antialiasing is not requested, confirm aa is grayscale.
+if [[ "$set_font_antialiasing_rgba" -eq 0 ]]; then
+
+    echo "Enabling grayscale font antialiasing..."
+
+    set_gsettings_key \
+        "org.gnome.desktop.interface" \
+        "font-antialiasing" \
+        "grayscale"
+
+    echo
+
+fi
+
+# if subpixel (rgba) font antialiasing *is* requested, enable it.
+if [[ "$set_font_antialiasing_rgba" -eq 1 ]]; then
 
     echo "Enabling subpixel antialiasing..."
 
