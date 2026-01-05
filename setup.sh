@@ -32,6 +32,7 @@ flatpak_apps=(
     com.valvesoftware.Steam # steam game launcher
     md.obsidian.Obsidian # obsidian markdown editor
     com.jgraph.drawio.desktop # draw.io diagram editor
+    com.logseq.Logseq # logseq markdown journal/todo/editor
 )
 
 # rpm packages to be installed with dnf
